@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar';
 import SplashScreen from './components/SplashScreen';
 import AuthScreen from './components/AuthScreen';
 import UserMenu from './components/UserMenu';
+import PermissionScreen from './components/PermissionScreen';
 import { Message, Role, ChatSession, ModelId, User } from './types';
 import { createChatSession, sendMessageStream, generateVideo, generateSpeech, connectLiveSession } from './services/geminiService';
 import { authService } from './services/authService';
@@ -44,6 +45,9 @@ const App: React.FC = () => {
   // Application State
   const [showSplash, setShowSplash] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [hasPermissions, setHasPermissions] = useState(false);
+  const [showPermissionScreen, setShowPermissionScreen] = useState(false);
+  
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -90,6 +94,11 @@ const App: React.FC = () => {
     if (user) {
       setCurrentUser(user);
     }
+    // Check if permissions were previously granted or skipped (simulated via localStorage for now)
+    const perms = localStorage.getItem('nox_permissions');
+    if (perms === 'granted' || perms === 'skipped') {
+       setHasPermissions(true);
+    }
   }, []);
 
   // Initialize Chat (Only when logged in)
@@ -112,9 +121,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (currentUser) {
+      // If we don't have permissions yet, show the screen
+      if (!hasPermissions) {
+        setShowPermissionScreen(true);
+      }
       startNewChat();
     }
-  }, [currentUser]); 
+  }, [currentUser, hasPermissions]); 
 
   // Handle Login/Logout
   const handleLogin = (user: User) => {
@@ -127,6 +140,18 @@ const App: React.FC = () => {
     setSessions([]);
     setMessages([]);
     setShowUserMenu(false);
+  };
+
+  const handlePermissionsGranted = () => {
+    localStorage.setItem('nox_permissions', 'granted');
+    setHasPermissions(true);
+    setShowPermissionScreen(false);
+  };
+
+  const handlePermissionsSkipped = () => {
+    localStorage.setItem('nox_permissions', 'skipped');
+    setHasPermissions(true);
+    setShowPermissionScreen(false);
   };
 
   const checkPaidKey = async (): Promise<boolean> => {
@@ -448,6 +473,11 @@ const App: React.FC = () => {
 
   if (showSplash) return <SplashScreen onFinish={() => setShowSplash(false)} />;
   if (!currentUser) return <AuthScreen onLogin={handleLogin} />;
+  
+  // Show Permission Screen after Auth but before Main App
+  if (showPermissionScreen) {
+    return <PermissionScreen onGranted={handlePermissionsGranted} onSkip={handlePermissionsSkipped} />;
+  }
 
   return (
     <div className="flex h-screen bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
