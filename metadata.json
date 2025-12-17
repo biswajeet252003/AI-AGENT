@@ -1,0 +1,8 @@
+{
+  "name": "Nox Chat Agent",
+  "description": "A powerful, ChatGPT-like AI assistant named Nox, powered by Google's Gemini models featuring real-time streaming, code highlighting, image generation, and conversation history.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
