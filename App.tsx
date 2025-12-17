@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Menu, Sparkles, StopCircle, Zap, Command, Image as ImageIcon, Paperclip, X, Mic, Video as VideoIcon, Volume2, Radio, Clapperboard, BrainCircuit, Zap as ZapIcon, ChevronDown, Check, Globe, MapPin, Code, Monitor, Smartphone } from 'lucide-react';
+import { Send, Menu, Sparkles, StopCircle, Zap, Command, Image as ImageIcon, Paperclip, X, Mic, Video as VideoIcon, Volume2, Radio, Clapperboard, BrainCircuit, Zap as ZapIcon, ChevronDown, Check, Globe, MapPin, Code, Monitor, Smartphone, LayoutGrid } from 'lucide-react';
 import { Chat, GenerateContentResponse, Content } from "@google/genai";
 import ChatMessage from './components/ChatMessage';
 import Sidebar from './components/Sidebar';
@@ -54,7 +54,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [attachment, setAttachment] = useState<{data: string, mimeType: string, preview: string} | null>(null);
   const [isLiveActive, setIsLiveActive] = useState(false);
-  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [showModelSelector, setShowModelSelector] = useState(false);
   const [videoAspectRatio, setVideoAspectRatio] = useState<'16:9' | '9:16'>('16:9');
   
   // Refs
@@ -460,6 +460,128 @@ const App: React.FC = () => {
         />
       )}
 
+      {/* Model Selection Overlay Modal / Bottom Sheet */}
+      {showModelSelector && (
+        <div 
+           className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" 
+           onClick={() => setShowModelSelector(false)}
+        >
+           {/* Responsive Container: Bottom Sheet on Mobile, Modal on Desktop */}
+           <div 
+                className={`
+                    w-full md:max-w-4xl bg-zinc-900 md:border border-zinc-800 
+                    rounded-t-[32px] md:rounded-3xl overflow-hidden shadow-2xl relative flex flex-col 
+                    h-[80vh] md:h-auto md:max-h-[85vh]
+                    animate-in slide-in-from-bottom duration-300
+                `} 
+                onClick={e => e.stopPropagation()}
+            >
+               {/* Mobile Drag Handle */}
+               <div className="md:hidden w-full flex justify-center pt-3 pb-1" onClick={() => setShowModelSelector(false)}>
+                  <div className="w-12 h-1.5 bg-zinc-700/50 rounded-full"></div>
+               </div>
+
+               {/* Header */}
+               <div className="px-6 py-4 md:p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900 sticky top-0 z-10">
+                  <div>
+                     <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                       <LayoutGrid size={20} className="text-indigo-400"/> Select Model
+                     </h2>
+                     <p className="text-sm text-zinc-500 mt-1">Choose the perfect AI model for your task</p>
+                  </div>
+                  <button onClick={() => setShowModelSelector(false)} className="p-2 hover:bg-zinc-800 rounded-full text-zinc-400 hover:text-white transition-colors hidden md:block">
+                     <X size={24} />
+                  </button>
+               </div>
+               
+               {/* Content Grid/List */}
+               <div className="flex flex-col md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 md:p-6 overflow-y-auto bg-zinc-900 md:bg-zinc-950/30 flex-1">
+                  {MODEL_OPTIONS.map(model => {
+                     const isActive = selectedModel === model.id;
+                     const config = getModelConfig(model.id as ModelId);
+                     const Icon = config.icon;
+                     const isPremium = model.id === ModelId.VIDEO_GEN || model.id === ModelId.IMAGE_GEN_PRO;
+
+                     return (
+                       <button 
+                         key={model.id}
+                         onClick={() => { handleModelChange(model.id as ModelId); setShowModelSelector(false); }}
+                         className={`
+                           relative text-left group transition-all duration-200
+                           
+                           /* Mobile: List Layout */
+                           flex flex-row items-center p-4 border-b border-white/5 last:border-0 hover:bg-white/5
+                           
+                           /* Desktop: Card Layout */
+                           md:flex-col md:items-start md:p-5 md:rounded-2xl md:border md:border-zinc-800 md:hover:bg-zinc-800 md:hover:scale-[1.01] md:hover:shadow-xl
+                           
+                           /* Active State Handling */
+                           ${isActive 
+                             ? 'md:bg-zinc-800 md:border-indigo-500/50 md:shadow-lg md:ring-1 md:ring-indigo-500/50 bg-indigo-500/10' 
+                             : 'md:bg-zinc-900/50'
+                           }
+                         `}
+                       >
+                         {/* Selection Indicator (Desktop) */}
+                         {isActive && (
+                           <div className="hidden md:block absolute top-4 right-4 text-indigo-400">
+                             <Check size={18} strokeWidth={3} />
+                           </div>
+                         )}
+
+                         {/* Icon */}
+                         <div className={`
+                            flex items-center justify-center shrink-0 transition-colors
+                            /* Mobile Sizing */
+                            w-10 h-10 rounded-lg mr-4
+                            /* Desktop Sizing */
+                            md:w-12 md:h-12 md:rounded-xl md:mr-0 md:mb-4
+                            ${isActive ? 'bg-indigo-500/20' : 'bg-zinc-800 md:bg-zinc-950 border border-zinc-700 md:border-zinc-800 group-hover:bg-zinc-700 md:group-hover:bg-zinc-900'}
+                         `}>
+                           <Icon size={20} className={`md:w-6 md:h-6 ${config.color}`} />
+                         </div>
+                         
+                         <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                                <h3 className={`font-bold text-sm md:text-base mb-0.5 md:mb-1 ${isActive ? 'text-white' : 'text-zinc-200 group-hover:text-white'}`}>
+                                    {model.name}
+                                </h3>
+                                {/* Mobile Premium Tag */}
+                                {isPremium && (
+                                    <span className="md:hidden text-[9px] font-bold bg-zinc-800 border border-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                                        Pro
+                                    </span>
+                                )}
+                            </div>
+                            
+                            <p className="text-xs text-zinc-500 font-medium leading-relaxed group-hover:text-zinc-400 truncate md:whitespace-normal">
+                                {model.description}
+                            </p>
+                         </div>
+
+                         {/* Mobile Check */}
+                         {isActive && (
+                            <div className="md:hidden text-indigo-400 pl-3">
+                                <Check size={18} strokeWidth={3} />
+                            </div>
+                         )}
+
+                         {/* Desktop Premium Tag */}
+                         {isPremium && (
+                           <div className="hidden md:block mt-4">
+                             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-950 border border-zinc-800 text-zinc-500 uppercase tracking-wider">
+                               Premium
+                             </span>
+                           </div>
+                         )}
+                       </button>
+                     );
+                  })}
+               </div>
+           </div>
+        </div>
+      )}
+
       {isLiveActive && (
         <div className="fixed inset-0 z-50 bg-zinc-950 flex flex-col items-center justify-center animate-in fade-in">
            <div className="absolute top-8 right-8">
@@ -496,10 +618,11 @@ const App: React.FC = () => {
         {/* Mobile Header */}
         <div className="md:hidden sticky top-0 z-10 flex items-center justify-between p-3 bg-zinc-950/80 backdrop-blur border-b border-zinc-800">
           <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-zinc-400"><Menu size={20} /></button>
-          <span className="font-semibold text-zinc-200 flex items-center gap-2">
+          <button onClick={() => setShowModelSelector(true)} className="font-semibold text-zinc-200 flex items-center gap-2 px-3 py-1.5 rounded-lg active:bg-zinc-800/50">
             <modelConfig.icon size={16} className={modelConfig.color} />
             {modelConfig.label}
-          </span>
+            <ChevronDown size={12} className="text-zinc-500"/>
+          </button>
           <button onClick={startNewChat} className="p-2 text-zinc-400"><Sparkles size={18} /></button>
         </div>
 
@@ -508,58 +631,19 @@ const App: React.FC = () => {
           {/* Spacer to center the model selector */}
           <div className="w-9"></div>
 
-          {/* Model Selector Dropdown */}
+          {/* Model Selector Button (Triggers Modal) */}
           <div className="relative">
             <button
-              onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800/50 transition-colors"
+              onClick={() => setShowModelSelector(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium text-zinc-200 hover:bg-zinc-800/50 transition-colors group"
             >
-              <span className="text-zinc-400">Model:</span>
-              <span className="flex items-center gap-2">
+              <span className="text-zinc-400 group-hover:text-zinc-300 transition-colors">Model:</span>
+              <span className="flex items-center gap-2 bg-zinc-900/50 border border-zinc-800 px-3 py-1.5 rounded-lg group-hover:bg-zinc-800 group-hover:border-zinc-700 transition-all">
+                <modelConfig.icon size={14} className={modelConfig.color} />
                 {selectedModelData?.name}
-                <ChevronDown size={14} className={`text-zinc-500 transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown size={14} className="text-zinc-500" />
               </span>
             </button>
-
-            {isModelMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setIsModelMenuOpen(false)}></div>
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-80 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden z-20 animate-in fade-in zoom-in-95 duration-200 p-1.5">
-                  {MODEL_OPTIONS.map((model) => {
-                     const isActive = selectedModel === model.id;
-                     const config = getModelConfig(model.id as ModelId);
-                     const Icon = config.icon;
-                     
-                     return (
-                       <button
-                         key={model.id}
-                         onClick={() => {
-                           handleModelChange(model.id as ModelId);
-                           setIsModelMenuOpen(false);
-                         }}
-                         className={`
-                           w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-all
-                           ${isActive ? 'bg-zinc-800' : 'hover:bg-zinc-800/50'}
-                         `}
-                       >
-                         <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 bg-zinc-950 border border-zinc-800 ${isActive ? 'ring-1 ring-white/20' : ''}`}>
-                           <Icon size={20} className={config.color} />
-                         </div>
-                         <div className="flex-1">
-                           <div className={`text-sm font-medium ${isActive ? 'text-white' : 'text-zinc-300'}`}>
-                             {model.name}
-                           </div>
-                           <div className="text-xs text-zinc-500 leading-tight mt-0.5">
-                             {model.description}
-                           </div>
-                         </div>
-                         {isActive && <Check size={16} className="text-indigo-400" />}
-                       </button>
-                     );
-                  })}
-                </div>
-              </>
-            )}
           </div>
 
           {/* Profile */}

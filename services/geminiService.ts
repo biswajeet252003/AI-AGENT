@@ -72,12 +72,13 @@ export const generateVideo = async (prompt: string, aspectRatio: '16:9' | '9:16'
     config: {
       numberOfVideos: 1,
       aspectRatio: aspectRatio,
+      resolution: '1080p',
     }
   });
 
   // Polling loop
   while (!operation.done) {
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 10000));
     operation = await ai.operations.getVideosOperation({ operation: operation });
   }
 

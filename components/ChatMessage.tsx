@@ -1,6 +1,6 @@
 import React from 'react';
 import { Message, Role } from '../types';
-import { User, AlertCircle, Globe, Link, Sparkles, MapPin } from 'lucide-react';
+import { User, AlertCircle, Globe, Link, Sparkles, MapPin, Film, Loader2 } from 'lucide-react';
 import MarkdownMessage from './MarkdownMessage';
 
 interface ChatMessageProps {
@@ -19,6 +19,8 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
   const mapSources = message.groundingChunks
     ?.filter(chunk => chunk.maps)
     .map(chunk => chunk.maps!);
+
+  const isVideoGenerating = message.isStreaming && message.content.includes('Generating video');
 
   return (
     <div className={`w-full flex mb-6 ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -50,6 +52,16 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               <div className="flex items-center gap-2 text-red-300 bg-red-900/20 p-2 rounded-lg">
                 <AlertCircle size={16} /> <span>{message.content}</span>
               </div>
+            ) : isVideoGenerating ? (
+               <div className="flex flex-col items-center justify-center p-6 bg-black/20 rounded-xl border border-white/5 w-64 h-48 animate-pulse">
+                 <div className="relative mb-3">
+                   <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full"></div>
+                   <Film size={32} className="text-zinc-400 relative z-10" />
+                   <Loader2 size={14} className="text-indigo-400 absolute -bottom-1 -right-1 animate-spin z-20" />
+                 </div>
+                 <span className="text-xs text-zinc-400 font-medium tracking-wide">Creating Scene...</span>
+                 <span className="text-[10px] text-zinc-600 mt-1">This may take a minute</span>
+               </div>
             ) : (
               <>
                 {/* Media Attachments/Generations */}
@@ -74,7 +86,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               </>
             )}
             
-            {message.isStreaming && !message.isError && (
+            {message.isStreaming && !message.isError && !isVideoGenerating && (
               <span className="inline-block w-1.5 h-4 align-middle bg-current animate-pulse ml-1 opacity-70"></span>
             )}
           </div>
