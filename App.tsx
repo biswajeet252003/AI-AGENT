@@ -93,9 +93,8 @@ const App: React.FC = () => {
 
   // Persist Sessions: Save to LocalStorage on change
   useEffect(() => {
-    if (sessions.length > 0) {
-      localStorage.setItem('nox_sessions', JSON.stringify(sessions));
-    }
+    // Save sessions to local storage whenever they change, even if empty
+    localStorage.setItem('nox_sessions', JSON.stringify(sessions));
   }, [sessions]);
 
   // Auto-resize textarea
@@ -244,9 +243,6 @@ const App: React.FC = () => {
     const newSessions = sessions.filter(s => s.id !== id);
     setSessions(newSessions);
     
-    // Update local storage immediately for deletes
-    localStorage.setItem('nox_sessions', JSON.stringify(newSessions));
-
     if (currentSessionId === id) {
        if (newSessions.length > 0) {
          handleSelectSession(newSessions[newSessions.length - 1].id);
