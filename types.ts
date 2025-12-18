@@ -15,6 +15,13 @@ export interface GroundingChunk {
     uri: string;
     title: string;
   };
+  maps?: {
+    googleMapsUri: string;
+    title: string;
+    formattedAddress: string;
+    rating?: number;
+    userRatingCount?: number;
+  };
 }
 
 export interface Message {
@@ -24,7 +31,7 @@ export interface Message {
   timestamp: number;
   isStreaming?: boolean;
   isError?: boolean;
-  groundingChunks?: any[]; // Allow flexibility for Maps/Search
+  groundingChunks?: GroundingChunk[]; // Allow flexibility for Maps/Search
   image?: string; // Base64 data URI
   video?: string; // Video URI
   audio?: string; // Audio URI (Base64)
@@ -38,9 +45,9 @@ export interface ChatSession {
 }
 
 export enum ModelId {
-  FLASH = 'gemini-2.5-flash', // Search + Maps + Transcribe
-  LITE = 'gemini-2.5-flash-lite-latest', // Fast
-  PRO = 'gemini-3-pro-preview', // Thinking + Video/Image Analysis
+  FLASH = 'gemini-3-flash-preview', // Latest Flash for Basic Text
+  LITE = 'gemini-flash-lite-latest', // Fast Lite
+  PRO = 'gemini-3-pro-preview', // Thinking + Reasoning
   IMAGE_GEN_FAST = 'gemini-2.5-flash-image', // Image Edit / Fast Gen
   IMAGE_GEN_PRO = 'gemini-3-pro-image-preview', // HQ Gen
   VIDEO_GEN = 'veo-3.1-fast-generate-preview', // Video Gen

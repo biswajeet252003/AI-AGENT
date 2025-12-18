@@ -49,7 +49,18 @@ const App: React.FC = () => {
   const [showPermissionScreen, setShowPermissionScreen] = useState(false);
   
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  
+  // Persist Sessions: Load from LocalStorage on initialization
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    try {
+      const saved = localStorage.getItem('nox_sessions');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error("Failed to load sessions", e);
+      return [];
+    }
+  });
+
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -80,6 +91,13 @@ const App: React.FC = () => {
   };
   useEffect(() => { scrollToBottom(); }, [messages]);
 
+  // Persist Sessions: Save to LocalStorage on change
+  useEffect(() => {
+    if (sessions.length > 0) {
+      localStorage.setItem('nox_sessions', JSON.stringify(sessions));
+    }
+  }, [sessions]);
+
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
@@ -94,14 +112,29 @@ const App: React.FC = () => {
     if (user) {
       setCurrentUser(user);
     }
-    // Check if permissions were previously granted or skipped (simulated via localStorage for now)
     const perms = localStorage.getItem('nox_permissions');
     if (perms === 'granted' || perms === 'skipped') {
        setHasPermissions(true);
     }
   }, []);
 
-  // Initialize Chat (Only when logged in)
+  // Handle Session Logic
+  const handleSelectSession = useCallback((id: string) => {
+    // We need to look up in the current state or the latest sessions
+    // Using a functional update here or relying on the 'sessions' prop being fresh
+    const session = sessions.find(s => s.id === id);
+    if (session) {
+      setCurrentSessionId(id);
+      setMessages(session.messages);
+      setAttachment(null);
+      const historyForSdk: Content[] = session.messages
+        .filter(m => !m.isError && !m.video)
+        .map(m => ({ role: m.role, parts: [{ text: m.content }] }));
+      chatInstanceRef.current = createChatSession(selectedModel, historyForSdk); 
+      chatModelRef.current = selectedModel;
+    }
+  }, [sessions, selectedModel]);
+
   const startNewChat = useCallback(() => {
     const newSessionId = Date.now().toString();
     const newSession: ChatSession = {
@@ -119,15 +152,47 @@ const App: React.FC = () => {
     if (textareaRef.current) textareaRef.current.focus();
   }, [selectedModel]);
 
+  // Initialization Effect
   useEffect(() => {
     if (currentUser) {
-      // If we don't have permissions yet, show the screen
       if (!hasPermissions) {
         setShowPermissionScreen(true);
       }
-      startNewChat();
+      
+      // If no session is selected yet
+      if (!currentSessionId) {
+        if (sessions.length > 0) {
+          // Restore last session
+          const lastSession = sessions[sessions.length - 1];
+          handleSelectSession(lastSession.id);
+        } else {
+          // Create new session
+          startNewChat();
+        }
+      }
     }
-  }, [currentUser, hasPermissions]); 
+  }, [currentUser, hasPermissions, currentSessionId, sessions.length, startNewChat, handleSelectSession]);
+
+  // Sync Messages to Current Session
+  useEffect(() => {
+    if (currentSessionId && messages.length > 0) {
+      setSessions(prev => prev.map(s => {
+        if (s.id === currentSessionId) {
+           // Generate a title if it's "New Chat" and we have a user message
+           let title = s.title;
+           if (s.title === 'New Chat' && messages.length > 0) {
+             const firstUserMsg = messages.find(m => m.role === Role.USER);
+             if (firstUserMsg) {
+               title = firstUserMsg.content.slice(0, 30) + (firstUserMsg.content.length > 30 ? '...' : '');
+             }
+           }
+           return { ...s, messages, title, updatedAt: Date.now() };
+        }
+        return s;
+      }));
+    }
+  }, [messages, currentSessionId]);
+
 
   // Handle Login/Logout
   const handleLogin = (user: User) => {
@@ -139,6 +204,7 @@ const App: React.FC = () => {
     setCurrentUser(null);
     setSessions([]);
     setMessages([]);
+    localStorage.removeItem('nox_sessions'); // Optional: Clear history on logout
     setShowUserMenu(false);
   };
 
@@ -173,24 +239,21 @@ const App: React.FC = () => {
     setTimeout(() => startNewChat(), 10);
   };
 
-  const handleSelectSession = (id: string) => {
-    const session = sessions.find(s => s.id === id);
-    if (session) {
-      setCurrentSessionId(id);
-      setMessages(session.messages);
-      setAttachment(null);
-      const historyForSdk: Content[] = session.messages
-        .filter(m => !m.isError && !m.video)
-        .map(m => ({ role: m.role, parts: [{ text: m.content }] }));
-      chatInstanceRef.current = createChatSession(selectedModel, historyForSdk); 
-      chatModelRef.current = selectedModel;
-    }
-  };
-
   const handleDeleteSession = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setSessions(prev => prev.filter(s => s.id !== id));
-    if (currentSessionId === id) startNewChat();
+    const newSessions = sessions.filter(s => s.id !== id);
+    setSessions(newSessions);
+    
+    // Update local storage immediately for deletes
+    localStorage.setItem('nox_sessions', JSON.stringify(newSessions));
+
+    if (currentSessionId === id) {
+       if (newSessions.length > 0) {
+         handleSelectSession(newSessions[newSessions.length - 1].id);
+       } else {
+         startNewChat();
+       }
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -409,7 +472,6 @@ const App: React.FC = () => {
   };
 
   const getWelcomeContent = (modelId: ModelId) => {
-    // Shared structure for welcome screen
     const base = {
       title: `Good ${new Date().getHours() < 12 ? 'Morning' : new Date().getHours() < 18 ? 'Afternoon' : 'Evening'}, ${currentUser?.name.split(' ')[0]}`,
       subtitle: "What can I do for you?",
@@ -474,7 +536,6 @@ const App: React.FC = () => {
   if (showSplash) return <SplashScreen onFinish={() => setShowSplash(false)} />;
   if (!currentUser) return <AuthScreen onLogin={handleLogin} />;
   
-  // Show Permission Screen after Auth but before Main App
   if (showPermissionScreen) {
     return <PermissionScreen onGranted={handlePermissionsGranted} onSkip={handlePermissionsSkipped} />;
   }
@@ -490,13 +551,12 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* Model Selection Overlay Modal / Bottom Sheet */}
+      {/* Model Selection Overlay */}
       {showModelSelector && (
         <div 
            className="fixed inset-0 z-[60] flex items-end md:items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" 
            onClick={() => setShowModelSelector(false)}
         >
-           {/* Responsive Container: Bottom Sheet on Mobile, Modal on Desktop */}
            <div 
                 className={`
                     w-full md:max-w-4xl bg-zinc-900 md:border border-zinc-800 
@@ -506,12 +566,10 @@ const App: React.FC = () => {
                 `} 
                 onClick={e => e.stopPropagation()}
             >
-               {/* Mobile Drag Handle */}
                <div className="md:hidden w-full flex justify-center pt-3 pb-1" onClick={() => setShowModelSelector(false)}>
                   <div className="w-12 h-1.5 bg-zinc-700/50 rounded-full"></div>
                </div>
 
-               {/* Header */}
                <div className="px-6 py-4 md:p-6 border-b border-zinc-800 flex justify-between items-center bg-zinc-900 sticky top-0 z-10">
                   <div>
                      <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -524,7 +582,6 @@ const App: React.FC = () => {
                   </button>
                </div>
                
-               {/* Content Grid/List */}
                <div className="flex flex-col md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-4 md:p-6 overflow-y-auto bg-zinc-900 md:bg-zinc-950/30 flex-1">
                   {MODEL_OPTIONS.map(model => {
                      const isActive = selectedModel === model.id;
@@ -538,33 +595,23 @@ const App: React.FC = () => {
                          onClick={() => { handleModelChange(model.id as ModelId); setShowModelSelector(false); }}
                          className={`
                            relative text-left group transition-all duration-200
-                           
-                           /* Mobile: List Layout */
                            flex flex-row items-center p-4 border-b border-white/5 last:border-0 hover:bg-white/5
-                           
-                           /* Desktop: Card Layout */
                            md:flex-col md:items-start md:p-5 md:rounded-2xl md:border md:border-zinc-800 md:hover:bg-zinc-800 md:hover:scale-[1.01] md:hover:shadow-xl
-                           
-                           /* Active State Handling */
                            ${isActive 
                              ? 'md:bg-zinc-800 md:border-indigo-500/50 md:shadow-lg md:ring-1 md:ring-indigo-500/50 bg-indigo-500/10' 
                              : 'md:bg-zinc-900/50'
                            }
                          `}
                        >
-                         {/* Selection Indicator (Desktop) */}
                          {isActive && (
                            <div className="hidden md:block absolute top-4 right-4 text-indigo-400">
                              <Check size={18} strokeWidth={3} />
                            </div>
                          )}
 
-                         {/* Icon */}
                          <div className={`
                             flex items-center justify-center shrink-0 transition-colors
-                            /* Mobile Sizing */
                             w-10 h-10 rounded-lg mr-4
-                            /* Desktop Sizing */
                             md:w-12 md:h-12 md:rounded-xl md:mr-0 md:mb-4
                             ${isActive ? 'bg-indigo-500/20' : 'bg-zinc-800 md:bg-zinc-950 border border-zinc-700 md:border-zinc-800 group-hover:bg-zinc-700 md:group-hover:bg-zinc-900'}
                          `}>
@@ -576,7 +623,6 @@ const App: React.FC = () => {
                                 <h3 className={`font-bold text-sm md:text-base mb-0.5 md:mb-1 ${isActive ? 'text-white' : 'text-zinc-200 group-hover:text-white'}`}>
                                     {model.name}
                                 </h3>
-                                {/* Mobile Premium Tag */}
                                 {isPremium && (
                                     <span className="md:hidden text-[9px] font-bold bg-zinc-800 border border-zinc-700 text-zinc-400 px-1.5 py-0.5 rounded uppercase tracking-wider">
                                         Pro
@@ -589,14 +635,12 @@ const App: React.FC = () => {
                             </p>
                          </div>
 
-                         {/* Mobile Check */}
                          {isActive && (
                             <div className="md:hidden text-indigo-400 pl-3">
                                 <Check size={18} strokeWidth={3} />
                             </div>
                          )}
 
-                         {/* Desktop Premium Tag */}
                          {isPremium && (
                            <div className="hidden md:block mt-4">
                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-950 border border-zinc-800 text-zinc-500 uppercase tracking-wider">
@@ -642,7 +686,7 @@ const App: React.FC = () => {
 
       <div className="flex-1 flex flex-col h-full relative overflow-hidden bg-zinc-950 transition-colors duration-500">
         
-        {/* Dynamic Background Gradient based on Model */}
+        {/* Dynamic Background Gradient */}
         <div className={`absolute inset-0 bg-gradient-to-b ${modelConfig.bg} opacity-20 pointer-events-none transition-all duration-700`}></div>
 
         {/* Mobile Header */}
@@ -658,10 +702,8 @@ const App: React.FC = () => {
 
         {/* Desktop Header */}
         <div className="hidden md:flex justify-between items-center pt-4 pb-2 px-6 z-10 relative">
-          {/* Spacer to center the model selector */}
           <div className="w-9"></div>
 
-          {/* Model Selector Button (Triggers Modal) */}
           <div className="relative">
             <button
               onClick={() => setShowModelSelector(true)}
@@ -676,7 +718,6 @@ const App: React.FC = () => {
             </button>
           </div>
 
-          {/* Profile */}
           <div className="group relative">
               <div 
                 onClick={() => setShowUserMenu(true)}
@@ -692,7 +733,6 @@ const App: React.FC = () => {
           {messages.length === 0 ? (
             <div className="min-h-full flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-500 pb-36 md:pb-48">
                
-               {/* Hero Section */}
                <div className={`w-16 h-16 bg-zinc-900/80 rounded-2xl flex items-center justify-center mb-6 border border-zinc-800 shadow-2xl shadow-black/50 ${modelConfig.color} ring-1 ring-white/5`}>
                  <modelConfig.icon size={32} />
                </div>
@@ -702,7 +742,6 @@ const App: React.FC = () => {
                  {welcomeContent.subtitle}
                </p>
 
-               {/* Capabilities Chips */}
                <div className="flex items-center gap-2 mb-8 flex-wrap justify-center">
                  {welcomeContent.capabilities.map((cap: any, idx: number) => (
                     <div key={idx} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-900/50 border border-zinc-800 text-[11px] font-medium text-zinc-400 uppercase tracking-wide">
@@ -711,7 +750,6 @@ const App: React.FC = () => {
                  ))}
                </div>
                
-               {/* Suggestion Grid */}
                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-w-2xl w-full px-2">
                  {welcomeContent.suggestions.map((item: any, i: number) => (
                    <button 
@@ -727,7 +765,6 @@ const App: React.FC = () => {
                  ))}
                </div>
 
-               {/* Footer Info */}
                <div className="absolute bottom-6 left-0 w-full text-center pointer-events-none">
                  <p className="text-[10px] text-zinc-700 uppercase tracking-widest font-semibold">Powered by Google Gemini</p>
                </div>
@@ -765,7 +802,6 @@ const App: React.FC = () => {
                </div>
             )}
             
-            {/* Aspect Ratio Selector for Video */}
             {selectedModel === ModelId.VIDEO_GEN && (
                <div className="flex justify-end pr-2 mb-1 animate-fade-in-up">
                  <div className="flex items-center gap-1 bg-zinc-900/90 backdrop-blur border border-zinc-800 rounded-lg p-0.5 shadow-lg">
